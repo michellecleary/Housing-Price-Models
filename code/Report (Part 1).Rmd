@@ -1,0 +1,594 @@
+---
+title: 'Assessing Predictive Performance of Classification Models Used to Classify House Sale Prices'
+author: "Michelle Cleary, Fionnuala Marshall, Ellen Crombie"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure stay in position
+- \usepackage{xcolor} #use the 'xcolor' package
+output:
+  pdf_document: default
+  bibliography: references.bib 
+  html_document: default
+  bookdown::pdf_document2: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,  warning = FALSE, message = FALSE)
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+```{r packs, message = FALSE, include = FALSE}
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(countrycode))
+suppressPackageStartupMessages(library(magrittr))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(kableExtra))
+suppressPackageStartupMessages(library(visdat))
+suppressPackageStartupMessages(library(coefplot))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(pander))
+suppressPackageStartupMessages(library(naivebayes))
+suppressPackageStartupMessages(library(MASS))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(ggcorrplot))
+suppressPackageStartupMessages(library(pROC))
+suppressPackageStartupMessages(library(ModelMetrics))
+suppressPackageStartupMessages(library(Amelia))
+suppressPackageStartupMessages(library(visreg))
+```
+
+```{r reading in data}
+raw_prices <- read_csv("data/houseprices.csv", show_col_types = FALSE)
+```
+
+```{r missing-values}
+prices <- na.omit(raw_prices)
+```
+
+```{r pre-processing}
+prices$Street <- factor(prices$Street, levels = c("Grvl", "Pave"), labels = c("Gravel", "Pavement"))
+
+prices$LotShape <- factor(prices$LotShape, levels = c("Reg", "IR1", "IR2", "IR3"),
+                          labels = c("Regular", "Slightly irregular", "Moderately irregular",
+                                     "Irregular"))
+
+prices$LandContour <- factor(prices$LandContour, levels = c("Lvl", "Bnk", "Low", "HLS"),
+                             labels = c("Level", "Banked", "Low", "Hillside"))
+
+
+prices$Utilities <- factor(prices$Utilities, levels = c("AllPub", "NoSeWa"),
+                           labels = c("All public", "No sewage"))
+
+prices$Neighborhood <- factor(prices$Neighborhood, levels = c("CollgCr", "Veenker", "Crawfor", "NoRidge", "Mitchel", "Somerst", "NWAmes",  "OldTown", "BrkSide",
+                                                           "Sawyer",  "NridgHt", "NAmes",   "SawyerW", "IDOTRR",  "MeadowV", "Edwards", "Timber",  "Gilbert",
+                                                           "StoneBr", "ClearCr", "NPkVill", "Blmngtn", "BrDale",  "SWISU",   "Blueste"),
+                              labels = c("CollgCr", "Veenker", "Crawfor", "NoRidge", "Mitchel", "Somerst", "NWAmes",  "OldTown", "BrkSide",
+                                         "Sawyer",  "NridgHt", "NAmes",   "SawyerW", "IDOTRR",  "MeadowV", "Edwards", "Timber",  "Gilbert",
+                                         "StoneBr", "ClearCr", "NPkVill", "Blmngtn", "BrDale",  "SWISU",   "Blueste"))
+
+prices$BldgType <- factor(prices$BldgType, levels = c("1Fam", "2fmCon", "Duplex", "TwnhsE", "Twnhs"),
+                           labels = c("1 family", "2 family conversion", "Duplex", "Townhouse end unit", "Townhouse inside unit"))
+
+prices$HouseStyle <- factor(prices$HouseStyle, levels = c("2Story", "1Story", "1.5Fin", "1.5Unf", "SFoyer", "SLvl", "2.5Unf", "2.5Fin"),
+                            labels = c("2 Story", "1 Story", "1.5 Story", "1.5 Story", "Split Foyer", "Split Level", "2.5 Story", "2.5 Story"))
+
+prices$RoofStyle <- factor(prices$RoofStyle, levels = c("Gable", "Hip", "Gambrel", "Mansard", "Flat", "Shed"),
+                           labels = c("Gable", "Hip", "Gambrel", "Mansard", "Flat", "Shed"))
+
+prices$Foundation <- factor(prices$Foundation, levels = c("PConc", "CBlock", "BrkTil", "Wood", "Slab", "Stone"),
+                            labels = c("Poured concrete", "Cinder block", "Brick and tile", "Wood", "Slab", "Stone"))
+
+prices$Heating <- factor(prices$Heating, levels = c("GasA", "GasW", "Grav", "Wall", "OthW", "Floor"),
+                         labels = c("Gas forced warm air furnace", "Gas hot water or steam heat", "Gravity furnace", "Wall furnace", "Hot water or steam heat other than gas", "Floor furnace"))
+
+prices$CentralAir <- factor(prices$CentralAir, levels = c("Y", "N"), labels = c(1, 0))
+
+prices$Electrical <- factor(prices$Electrical, levels = c("SBrkr", "FuseF", "FuseA", "FuseP", "Mix", NA),
+                            labels = c("Standard circuit breakers", "Fair fuse box", "Average fuse box",
+                                       "Poor fuse box", "Mixed"))
+
+
+# Summer, Spring, Autumn, Winter
+prices$SeasonSold<- factor(prices$MoSold, labels = c("Winter", "Winter", "Spring", "Spring",
+                                                     "Spring","Summer", "Summer", "Summer", "Autumn",                                                     "Autumn", "Autumn", "Winter"))
+
+# Adding bathrooms
+
+prices$GarageType <- factor(prices$GarageType,
+                            levels= c("Attchd",
+                                      "Detchd",
+                                      "BuiltIn",
+                                      "CarPort",
+                                      "2Types",
+                                      "NA",
+                                      "Basment"),
+                            labels  = c("Attached",
+                                        "Detached",
+                                        "Built In",
+                                        "Car Port",
+                                        "2Types",
+                                        "NA",
+                                        "Basement"))
+
+prices$KitchenQual <- factor(prices$KitchenQual,
+                            levels= c("Ex",
+                                      "Gd",
+                                      "TA",
+                                      "Fa"),
+                            labels  = c("Excellent",
+                                        "Good",
+                                        "Typical/ Average",
+                                        "Fair"))
+
+
+```
+
+```{r, binary-var}
+prices$AveragePrice <- prices$SalePrice
+
+prices$AveragePrice <- factor(
+  ifelse(prices$AveragePrice < mean(prices$AveragePrice, na.rm = TRUE), 1,
+         ifelse(prices$AveragePrice > mean(prices$AveragePrice, na.rm = TRUE), 2, NA)),
+  1:2, labels = c("0", "1"))
+
+
+prices <- subset(prices, select = -c(MoSold, SalePrice))
+```
+
+\sffamily\fboxrule.1em\fboxsep1em \fcolorbox{cyan}{cyan!50}{\color{black}
+\begin{minipage}[c][][t]{15.5cm}
+\textbf{Executive Summary}
+
+This report evaluates two models which predict whether a house will sell for more or less than the average market price. The models were formulated using data from the sale of houses in an American city over a 5 year period, which includes information about the features of each house, such as house style and lot area.
+
+\begin{enumerate}
+\item Model 1 uses all 29 house features from the dataset, and we estimate that when asked to make 100 predictions, 89 will be correct.
+\item Model 2 uses 5 house features: lot area, year built, number of full bathrooms, number of bedrooms, and house style. We estimate that when asked to make 100 predictions using this model, 73 will be correct.
+\end{enumerate}
+
+
+Considering this, both models performed well. To highlight a few key results, both models determined that houses which were newer, had larger lot areas, and a higher number of bedrooms were more likely to be above average price. Model 1 suggested that the timing of the sale can be a significant factor in determining a house's selling price. It indicated that houses sold during peak buying seasons (such as spring and summer) had a higher probability of selling for above average price than below average price, compared to winter and autumn.
+
+We recommend Model 1 in most cases since it has a better prediction accuracy. However, Model 2 still has a good prediction accuracy and only requires information regarding 5 standard house features, which are likely to be readily available for most houses entering the market, even if there is limited information about more specific features such as kitchen quality. 
+
+
+\end{minipage}}
+
+## Introduction
+
+In this report, we implemented two models for predicting whether a house will sell for more or less than the market average. The dataset used to create our models included 1460 observations based upon 31 features. The data focused on the sale price of numerous houses in an American city over a 5 year period and included information about features of each house, such as lot area in square feet and neighbourhood.
+
+We first fitted a logistic regression model to the data using all 29 available predictor features. We also fitted a Naive Bayes model, using five features: lot area, year built, number of full bathrooms, number of bedrooms, and house style. We assessed the performance of each model under 10-fold cross validation by measuring prediction accuracy and computing the Brier score. We defined prediction accuracy as the proportion of the test data which was correctly classified.
+
+## Preprocessing of the Dataset
+
+When carrying out initial exploration of the data, we looked for outliers and any features which had a significant level of missing values. Lot area appeared to contain some values outside of the usual range. However, these correlated with other features of the properties, and thus, we did not feel it was appropriate to remove them entirely from our dataset. The features garage type and electrical system had missing values. We were able to remove any entries corresponding to these values since Figure \ref{missing} shows that they only represented a small proportion of entries in the dataset and so did not majorly reduce the number of observations.
+
+```{r initial-exploration, fig.height=3, fig.width=7, fig.cap="\\label{missing}Missingness map showing missing values for features garage type and electrical system.", fig.pos="H"}
+# Only GarageType and Electrical have NA values
+nas <- data.frame(cbind(raw_prices$GarageType, raw_prices$Electrical))
+colnames(nas) <- c("GarageType", "Electrical")
+missmap(nas, col = c("red", "#009194"), x.las = 1)
+```
+
+We created a binary feature called average price which took the value 0 if the house sold for less than the average price, and 1 if the house sold for greater than the average price, based on all sale prices. This allowed us to measure whether a house sold for more or less than the market average for classification within our models.
+
+Next, we coded factor features and made simplifications based on similarity of level descriptions. For example, the house style levels "1.5 story finished" and "1.5 story unfinished" were combined into "1.5 story", and similarly for "2.5 story". We decided that features such as neighbourhood, which had a high granularity, could not be simplified any further because the dataset did not contain any further information or context for us to do so. Finally, we transformed the month sold feature to instead describe the season sold, in order to simplify the identification of trends throughout later analysis, with 4 factor levels instead of 12. We believe this was appropriate due to common literature surrounding house prices often referring to seasons rather than months \cite{season}.
+
+## Logistic Regression Model
+
+```{r fitting-logistic-model}
+# Fitting the model
+fit_total <- glm(formula = AveragePrice~ ., data = prices, family=binomial(link='logit'), na.action = na.omit)
+
+# Prediction data
+train_data <- prices[,-31]
+
+# Predict AvPrice for the test data
+pred <- predict.glm(fit_total, newdata = train_data, type = "response", na.action = na.omit)
+
+# Output contains really small decimals (either 1 or 0) so making these into integers
+pred_total <- ifelse(pred>.5, 1, 0)
+
+# Compute accuracy
+accuracy <- sum(pred_total == prices$AveragePrice) / length(pred_total)
+accuracy <- accuracy *100
+
+# Create dataframe to store accuracies when dropping each feature
+drop_test <- data.frame(c(), c())
+
+# Loop to assess accuracy when dropping each feature
+for (n in names(prices)){
+  if (!(n %in% c("Id", "AveragePrice"))){
+    drop_data <- prices[ , ! names(prices) %in% c(n)]
+    
+    # Fit model without one feature
+    fit_drop <- glm(formula = AveragePrice~ ., data = drop_data, family=binomial(link='logit'), na.action = na.omit)
+    # Make new predictions
+    train_drop_data <- drop_data[,-30]
+    pred_drop <- predict.glm(fit_drop, newdata = train_drop_data, type = "response", na.action = na.omit)
+    pred_drop_total <- ifelse(pred_drop>.5, 1, 0)
+    drop_accuracy <- sum(pred_drop_total == drop_data$AveragePrice) / length(pred_drop_total)
+    drop_accuracy <- round(drop_accuracy * 100, 2)
+    drop_test <- rbind(drop_test, c(n, drop_accuracy ) )
+  }
+}
+colnames(drop_test) <- c("Feature Dropped", "Predictive Accuracy")
+```
+
+Our first classification technique was fitting a logistic regression model using all the predictor features within our dataset, assuming that the residuals followed a binomial distribution. This model assumes that there is a linear relationship between the logit function of the classification outcome and each of the predictor features \cite{logistic}, and in its simplest form can be written:
+
+$$
+\text{log} \frac{p(y_i =1 | x_i)}{p(y_i =0 | x_i)} = \theta^Tx_i,
+$$ 
+
+where each $y_i \in \{0,1\}$ denotes the classification outcome (house selling for below or above average price), and $\theta^T$ is the vector of coefficients for each feature $x_i$.
+
+```{r linassumption, fig.height=3, fig.width=6, fig.cap="\\label{linassump}Assessing the linearity assumptions between continuous features and the logit function of the classification outcome.", fig.pos="H"}
+predictors <- colnames(prices)
+
+checklin <- prices %>%
+  dplyr::select_if(is.numeric) %>%
+  dplyr::select(-c(FullBath, KitchenAbvGr, BedroomAbvGr, Fireplaces, Id, YrSold, TotRmsAbvGrd, HalfBath, YearBuilt, OverallCond, OverallQual)) %>%
+  mutate(logit = log(pred/(1-pred))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+ggplot(checklin, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess", colour = "#009194") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")+
+  ylab("Feature Value") +
+  xlab("Classification outcome in logit scale") +
+  ggtitle("Continuous features vs logit function of classification outcome")
+
+varinfluence <- car::vif(fit_total)
+lot_coeff <- fit_total[["coefficients"]][["LotArea"]]
+```
+
+Before analysing the results, we used Figure \ref{linassump} to check the linearity assumption between continuous features and the log odds of the classification outcome, defined by the function: $\text{logit}(p_i) = \text{log}\left(\frac{p_i}{1-p_i}\right)$ where $p_i$ is the probability of the outcome. All continuous features except garage area appear to be fairly linearly associated with the classification outcome. For the purpose of this report we did not transform garage area, but noted that to improve the validity of this model in the future, we would investigate the use of a spline or polynomial transformation for this feature \cite{logistic}. Through further assessment of variance inflation factors, we discovered a potentially problematic amount of collinearity among the number of kitchens and other features. We noted this as an improvement point to increase the performance of the model if required in the future.
+
+To highlight one key finding, as lot area increases by one unit, the probability that the house price is above average is `r round(lot_coeff,6)*10^5` $\times 10^{-5}$ times as large at the probability that the house price is below average when all other features are held constant. Figure \ref{logistic} displays the sigmoid-shaped logistic relationship between lot area and average house price, for each season. In agreement with wider research regarding house prices \cite{season}, our model suggests that houses sold in spring and summer have higher probabilities of being above average price than being below, compared to winter and autumn. However, the extent to which this relationship is true may not be as significant as it appears in Figure \ref{logistic}, due to the aforementioned properties with extremely large lot areas being sold in summer.
+
+```{r logistic, fig.height=3, fig.width=6, fig.cap="\\label{logistic}Relationship between lot area and average price, after fitting the logistic regression model.", fig.pos="H"}
+# Change order of seasons so colours overlapping are not similar
+prices$SeasonSold <- relevel(prices$SeasonSold, "Spring")
+
+visreg(fit_total, "LotArea",
+       gg= TRUE,
+       by = "SeasonSold",
+       scale="response",
+       overlay =TRUE,
+       alpha = 1,
+       scale_fill_brewer(12,'Set3'),
+       line.par = list(size = 0.7)) +
+  labs(y = "Prob(AveragePrice)",
+       x = "LotArea",
+       title = "Relationship between lot area and average price",
+       subtitle = "Controlling for all other features")
+
+```
+
+```{r kfold-logistic-regression, warning = FALSE}
+set.seed(1234)
+
+k <- 2 #k value for k-nearest neighbours
+numfolds <- 10
+
+# stratified random split of the data.
+folds <- createFolds(prices$AveragePrice, k=numfolds)
+accuracies <- numeric(numfolds)
+brier <- numeric(numfolds)
+con_overall <- data.frame()
+
+
+for (i in 1:numfolds) {
+  # Define the training and test data, both do not have AvPrice col
+  traindata <- prices[-folds[[i]],-31]
+  testdata <- prices[folds[[i]],-31]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  # And to remove factored features that have only one possible value
+  for (n in names(traindata)){
+    if (is.factor(traindata[[n]])) {
+      if(nlevels(traindata[[n]]) < 2){
+        traindata <- traindata[ , ! names(traindata) %in% c(n)]
+        testdata <- testdata[ , ! names(testdata) %in% c(n)]
+      } else{
+        levels_train <- levels(traindata[[n]])
+        levels_test <- levels(testdata[[n]])
+        for (lev in levels_test) {
+        if (!(lev %in% levels_train)){
+          testdata <- subset(testdata, testdata[[n]] != lev)
+          }
+        }
+      }
+    }
+  }
+
+
+  # Note the training set labels
+  testlabels <- prices[folds[[i]],31]
+
+  # Note the training test labels
+  trainlabels <- prices[-folds[[i]],31]
+
+  # Training set 
+  trainingset <- cbind(traindata, trainlabels)
+
+  # Fit the model for AvPrice using training data
+  fit <- glm(formula = AveragePrice~ ., data = trainingset, family=binomial(link='logit'), na.action = na.omit)
+
+  # Predict AvPrice for the test data
+  preds <- predict.glm(fit, newdata = testdata, type = "response", na.action = na.omit)
+
+  # Output contains really small decimals (either 1 or 0) so making these into integers
+  preds_round <- ifelse(preds>.5, 1, 0)
+
+  # Check overall accuracy
+  accuracies[i] <- sum(preds_round == testlabels) / length(preds)
+  
+  # Calculate Brier score
+  brier_calc <- as.numeric(ifelse(testlabels==1, 1, 0))
+  brier_sq <- numeric(length = length(preds_round))
+  for (b in 1:length(preds_round)) {
+    brier_sq[b] <- (preds_round[b] - brier_calc[b])^2
+  }
+  brier[i] <- mean(brier_sq)
+  
+  # Create confusion matrix
+  con_tab <- cbind(preds_round, brier_calc)
+  con_overall <- rbind(con_overall, con_tab)
+}
+  
+overall_accuracy <- 100 * round(mean(accuracies), 4)
+overall_brier <- round(mean(brier), 4)
+```
+
+### Assessment of model
+
+To gain an initial understanding of the accuracy of this model, we compared the proportion of correct and incorrect predictions of average house price. Our model is `r round(accuracy, 3)`% accurate. However, this result is likely to be an over estimate of accuracy due to the introduction of an over fitting bias, because the model was both trained and tested on the same set of observations. To remedy this, we performed 10-fold cross validation and computed the accuracy rate for each fold as a proportion of the test data correctly classified. The accuracy of the model ranges from `r round(min(accuracies), 4)*100`% to `r round(max(accuracies), 4)*100`%, and the averaged accuracy rate across each fold is approximately `r overall_accuracy`%, which is below our initial projection of accuracy, but still suggests that roughly `r overall_accuracy`% of the time, the model will correctly predict whether a house price is above or below average.
+
+```{r confusion-matrix, fig.height=2, fig.width=5, echo=FALSE, message=FALSE, results='hide',fig.keep='all', fig.cap="\\label{confusion}Plot displaying the counts of incorrect and correct predictions.", fig.pos="H"}
+## Confusion matrix
+test <- table(con_overall[,1], con_overall[,2], dnn = c("Prediction", "Actual"))
+
+
+cm <- caret::confusionMatrix(test, positive = "1")
+plt <-as.data.frame(cm$table)
+plt$Prediction <- factor(plt$Prediction, levels=rev(levels(plt$Prediction)))
+
+ggplot(plt, aes(Prediction,Actual, fill= Freq,  add_row_percentages = TRUE,
+  add_col_percentages = TRUE)) +
+
+        ggtitle("Confusion Matrix")+
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#009194") +
+        labs(x = "Actual",y = "Prediction") +
+        scale_x_discrete(labels=c("Above Average","Below Average")) +
+        scale_y_discrete(labels=c("Below Average","Above Average")) 
+```
+
+Figure \ref{confusion} displays the counts of correct and incorrect predictions, showing how `r round(plt[3,3]/(plt[1,3] + plt[3,3]),4)*100`% of below average house prices were incorrectly predicted as being above average, compared to `r round(plt[2,3]/(plt[4,3] + plt[2,3]),4)*100`% of above average house prices being incorrectly predicted as below average. This suggests that the model might be better at correctly predicting below average house prices than above average house prices for this particular dataset.
+
+Furthermore, whilst Figure \ref{confusion} gives a good indication of performance, counting the number of correct classifications ignores the probabilistic element of prediction. Considering this, we also calculated the Brier score for each fold and took an average of these scores after cross validation. The Brier score measures the accuracy of probabilistic predictions and can be calculated $\frac{1}{n} \sum^{n}_{1} (p_i - y_i)^2$, where $y_i$ denotes the true value of a house being above or below average (1 or 0), and $p_i$ denotes the probability assigned to $p(y_i = 1|x_i)$ \cite{brier}. For a set of predictions, a lower Brier score, which can take values between 0 and 1, indicates better predictive performance. We see that the average Brier score is `r round(overall_brier, 2)`, indicating good performance prediction.
+
+## Naive Bayes Model
+
+We fitted a Naive Bayes model to the data, using the features lot area, year built, number of full bathrooms, number of bedrooms, and house style as predictors, as they are all likely to impact the sale price of a house.
+
+In choosing these features, we first investigated the importance of each feature for accuracy within the previous logistic regression model. We fitted the model a further 29 times, leaving one feature out each time. The estimated accuracy of the model in each case is displayed in Figure \ref{drop}, although it is important to note that these values were calculated before 10-fold cross validation, due to limited computational power. Whilst not a definitive indication of feature importance, it can be suggested that estimated model accuracy decreases when leaving out features such as the number of bathrooms. We included both this feature and the number of bedrooms, since market research also suggests that the number of bedrooms and bathrooms in a house play a crucial role in determining its sale price \cite{Property Road}.
+
+```{r drop-plot, fig.height=3, fig.width=6, fig.cap="\\label{drop}Estimated model accuracy when fitting the logistic regression model and leaving out one feature at a time.",fig.pos="H"}
+ggplot(drop_test, aes(x = drop_test[["Feature Dropped"]], y = drop_test[["Predictive Accuracy"]], fill = drop_test[["Feature Dropped"]])) +
+  geom_bar(stat = "identity") +
+  geom_hline(aes(yintercept=9.48, colour = 9))+
+  annotate("text", x=15, y=10, label="Estimated model acccuracy with all features included", size=3, color="darkblue") +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5))+
+  theme(legend.position = "none") +
+  labs(x = "Feature Dropped", y = "Estimated Model Accuracy %") +
+  ggtitle("Logistic regression model accuracies, leaving one feature out")+
+  scale_x_discrete(labels = drop_test[["Feature Dropped"]])
+
+```
+
+In addition to this, we included the year built, lot area and house style. Figure \ref{yearbuilt} illustrates that, in the given dataset, there appears to be a higher density of newly built houses being sold for above average price, compared to older houses. Further, the results from the logistic regression in Figure \ref{logistic} have already suggested a relationship between classification outcome and lot area, when all other features are controlled.  Finally, it is intuitive that house style may impact the sale price of a house. For example, a two story house would be costly to build than a one story house, and would therefore have a higher value and selling price \cite{Gardner Homes}.
+
+```{r density-test, fig.height=3, fig.width=6, fig.cap="\\label{yearbuilt}Density plot of houses sold below and above average price by year built.", fig.pos="H"}
+ggplot(prices, aes(x = YearBuilt)) +
+  geom_density(aes(fill = AveragePrice), alpha = 0.3) +
+  xlim(c(1880,2020))+
+  scale_fill_discrete(labels=c( "Below Average", "Above Average"))+
+  ggtitle("Distribution of houses by year built")
+```
+
+We modelled these features independently, assuming no correlation between features. We treated the continuous features, $x_1 =$ lot area and $x_2 =$ year built, as Gaussian; the count features, $x_3 =$ number of full bathrooms and $x_4 =$ number of bedrooms, as Poisson; and the discrete feature, $x_5 =$ house style, as categorical (Multinoulli). We used the class conditional distributions of these features to predict the class, $c$, of the feature vector, $x = (x_{1}, x_{2}, x_{3}, x_{4}, x_{5})$. The possible classes are being sold above, $c=1$, or below, $c=0$, average house price. The class conditionals were: 
+$$
+p(x \mid y=c) = \mathrm{N}(x_{1} \mid \mu_{1,c}, \sigma^2_{1,c})\mathrm{N}(x_{2} \mid \mu_{2,c}, \sigma^2_{2,c}) \mathrm{Pois}(x_{3} \mid \lambda_{3,c} )\mathrm{Pois}(x_{4} \mid \lambda_{4,c} )\mathrm{Multinoulli}(x_{5} \mid \theta_{i, c}), \ \ \ \ c \in \{0, 1\}.
+$$ 
+
+Each class $c$ has 7 parameters, $(\mu_{1,c}, \sigma^2_{1,c}, \mu_{2,c}, \sigma^2_{2,c}, \lambda_{3,c}, \lambda_{4,c}, \theta_{i, c})$. We estimated the first six parameters, shown in Table \ref{tab:estimates}, by computing the means and variances of their respective features in our dataset.
+
+```{r estimates}
+# Create dataset containing required features
+NB_data <- prices[, c("LotArea", "HouseStyle", "FullBath", "BedroomAbvGr", "YearBuilt", "AveragePrice")]
+# Convert count features from numeric to integer so distributions are treated as Poisson
+NB_data <- NB_data %>%
+  mutate_at(vars(FullBath, BedroomAbvGr), ~ as.integer(round(.x)))
+
+# Compute means for continuous and count features in each class
+means <- aggregate(.~AveragePrice, data=NB_data[-2], mean)
+means_df <- data.frame(t(means[, -1]))
+colnames(means_df) <- means[, 1]
+sigma2 <- aggregate(.~AveragePrice, data=NB_data[-c(2, 3, 4)], var)
+sigma2_df <- data.frame(t(sigma2[, -1]))
+colnames(sigma2_df) <- sigma2[, 1]
+mle <- rbind(means_df, sigma2_df)
+mle <- mle[c(1, 5, 4, 6, 2, 3),]
+
+parameters <- c("$\\mu_{1,c}$", "$\\sigma^2_{1,c}$", "$\\mu_{2,c}$", "$\\sigma^2_{2,c}$", "$\\lambda_{3,c}$", "$\\lambda_{4,c}$")
+
+rownames(mle) <- parameters
+colnames(mle) <- c("Below average", "Above average")
+knitr::kable(mle, escape = F, digits = 2, caption = "Estimates of parameters of Normal and Poisson distributions.") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+Since the house style feature is discrete, we estimated the parameter $\theta_{i, c}$ as the proportion of category $i$ in class $c$ in the given dataset. Table \ref{tab:discrete} shows the computed estimates for $\theta_{i, c} = \mathrm{Pr}(x_5 = i \mid y = c)$ for each possible category, $i$, in each class, $c$.
+
+```{r discrete}
+# Compute proportion of each factor level in each class
+proportions <- prop.table(table(NB_data$AveragePrice, NB_data$HouseStyle), margin = 1)
+proportions <- data.frame(proportions)
+propdf <- data.frame(matrix(nrow = 6, ncol = 2))
+j <- 1
+for (i in 1:6){
+  propdf[i, 1] <- proportions[j, 3]
+  propdf[i, 2] <- proportions[j+1, 3]
+  j <- j + 2
+}
+colnames(propdf) <- c("Below average", "Above average")
+rownames(propdf) <- c("2 Story", "1 Story", "1.5 Story", "Split Foyer", "Split Level", "2.5 Story")
+knitr::kable(propdf, digits = 4, caption = "Estimates of parameter for each category of Multinoulli distribution.") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+These results suggest that as lot area and number of bedrooms and bathrooms of a house increase, the property has an increasingly higher probability of selling for above average price than for below. Figure \ref{yearbuiltmodel} demonstrates a similar density distribution to what is seen in Figure \ref{yearbuilt}. It suggests that the probability of a house selling for above average price is higher than for below for more recent builds. Table \ref{tab:discrete} highlights that houses which are 1 story, 1.5 story, split foyer, and split level are more likely to sell for below average price than above, while 2 story houses have a higher probability of selling for above average price. 2.5 story houses have similar probabilities of being sold either below or above average selling price, but we interpret this with caution, as this house style accounts for only 1.2% of the observations in the given dataset.
+
+```{r naive-bayes, fig.height=3, fig.width=5, fig.cap="\\label{yearbuiltmodel}Density plot of houses sold below and above average price by year built based on the fitted Naive Bayes model.", fig.pos="t!"}
+# Naive Bayes model
+nb <- naive_bayes(AveragePrice ~ LotArea + HouseStyle + FullBath +
+              BedroomAbvGr + YearBuilt, data = NB_data, usepoisson = TRUE)
+plot(nb, which = 5, main = "Distribution of houses by year built based on Naive Bayes model")
+```
+
+### Assessment of performance
+
+```{r nb-cross-validation}
+# set the seed
+set.seed(1234)
+
+# Cross validation
+k <- 2 #k value for k-nearest neighbours
+numfolds <- 10
+
+# stratified random split of the data.
+folds <- createFolds(NB_data$AveragePrice, k=numfolds)
+accuracies_nb <- numeric(numfolds)
+brier_nb <- numeric(numfolds)
+
+for (i in 1:numfolds) {
+  # Define the training and test data, both do not have AvPrice col
+  traindata <- NB_data[-folds[[i]],]
+  testdata <- NB_data[folds[[i]],-6]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Note the training set labels
+  testlabels <- NB_data[folds[[i]],6]
+
+  # Note the training test labels
+  trainlabels <- NB_data[-folds[[i]],6]
+
+  # Remove factor levels being in test set but not training set and vice versa
+  levels_train <- levels(traindata[['HouseStyle']])
+  levels_test <- levels(testdata[['HouseStyle']])
+  for (lev in levels_test) {
+    if (!(lev %in% levels_train)){
+      testdata <- subset(testdata, testdata[['HouseStyle']] != lev)
+      testlabels <- which(testdata[['HouseStyle']] != lev)
+    }
+  }
+  for (lev in levels_train) {
+    if (!(lev %in% levels_test)){
+      traindata <- subset(traindata, traindata[['HouseStyle']] != lev)
+    }
+  }
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+  # Training set (unsure why the example doesn't just remove folds straight from prices to make this)
+  trainingset <- traindata
+
+  # Fit the model for AvPrice using training data
+  nb_fit <- naive_bayes(AveragePrice ~ LotArea + HouseStyle + FullBath +
+                      BedroomAbvGr + YearBuilt, data = trainingset, usepoisson = TRUE)
+  # Predict AvPrice for the test data
+  preds <- data.frame(predict(nb_fit, newdata = testdata, type = "class"))
+  # Output contains really small decimals (either 1 or 0) so making these into integers
+  #preds_round <- ifelse(preds>.5, 1, 0)
+
+  # Check overall accuracy and brier score
+  pred_for_brier <- as.numeric(ifelse(preds[,1]==1, 1, 0))
+  accuracies_nb[i] <- sum(preds == testlabels) / nrow(preds)
+  brier_calc_nb <- as.numeric(ifelse(testlabels==1, 1, 0))
+  brier_nb[i] <- brier(brier_calc_nb, pred_for_brier)
+}
+
+overall_accuracy_nb <- 100 * round(mean(accuracies_nb), 4)
+overall_brier_nb <- round(mean(brier_nb), 4)
+```
+
+We assessed the performance of the Naive Bayes model using 10-fold cross validation. We computed an accuracy rate for each fold as the proportion of the test data correctly classified, ranging from `r round(min(accuracies_nb), 4)*100`% to `r round(max(accuracies_nb), 4)*100`%. Taking the mean of these 10 rates, we found that our model has an overall accuracy rate of approximately `r overall_accuracy_nb`%. These results indicate that our model performs relatively well at classifying whether a house should be sold below or above average price based on these predictors.
+
+```{r correlation, fig.height=3, fig.width=6, fig.cap="\\label{correlation}Plot of correlation matrix of predictors, showing that our assumption of independent features may not be valid due to moderate positive correlation between number of full bathrooms and both year built and number of bedrooms.", fig.pos="H"}
+x2 <- NB_data 
+x2$HouseStyle <- as.numeric(x2$HouseStyle)
+corr <- cor(x2[, c(1, 2, 3, 4, 5)])
+ggcorrplot(corr, title = "Plot of correlation matrix of predictors", show.diag=TRUE, type="lower", lab=TRUE, lab_size=3) + scale_fill_gradient(low="white", high="#009194")
+```
+
+Figure \ref{correlation} illustrates that there is moderate correlation between some of the predictor features, particularly between number of full bathrooms and both year built and number of bedrooms. As the Naive Bayes model assumes independence of features, this correlation may have contributed to a degree of inaccuracy within our model.
+
+## Conclusion
+
+Our findings indicate that our models performed relatively well at classifying sales prices. Table \ref{tab:summary_tab} compares the average accuracy and Brier score of the logistic regression and Naive Bayes models.
+
+```{r summary_tab}
+# Calculating the mean
+summary_table <- data.frame(c("Average Accuracy (%)", "Average Brier Score"), c(round(overall_accuracy, 2), round(overall_brier, 2)), c(round(overall_accuracy_nb, 2), round(overall_brier_nb, 2)))
+
+knitr::kable(summary_table, caption = "Summary of accuracy and scores after 10-fold cross validation.", col.names = c("Measure", "Logistic Regression", "Naive Bayes")) %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+As expected, the logistic regression model performs better than the Naive Bayes model, as it uses all 29 available predictors. However, despite using only 5 predictors, the Naive Bayes model performs relatively well. It has an average prediction accuracy `r abs(overall_accuracy - overall_accuracy_nb)`% below that of the logistic regression model. The difference in Brier score of the two models, `r round(abs(overall_brier - overall_brier_nb), 2)`, also indicates that the logistic regression model performs better.
+
+In conclusion, our findings suggest that the models implemented could be used to predict whether a house will sell for above or below the average market price. The logistic regression model may have performed so well as it used a higher number of predictors, which allows for a more comprehensive and detailed understanding of the features that affect the sales price of a house. However, the Naive Bayes model still had a good predictive performance. Future research could be conducted to determine a combination of features to include which would result in an optimal balance between model complexity and prediction accuracy.
+
+```{=tex}
+\begin{thebibliography}{99}
+
+  \bibitem{season}
+  The Advisory,
+  \emph{Definitve Guide: When is the Best Time to Sell Your House?}
+  \url{https://www.theadvisory.co.uk/house-selling/best-time-to-sell-house/#the-4-seasons-compared}
+  
+  \bibitem{logistic}
+  Statistical tools for high-throughput data analysis
+  \emph{Logistic Regression Assumptions and Diagnostics in R}
+  \url{http://www.sthda.com/english/articles/36-classification-methods-essentials/148-logistic-regression-assumptions-and-diagnostics-in-r/}
+  
+  \bibitem{brier}
+  Brier, Glenn W. (1950),
+  \emph{Verification of forecasts expressed in terms of probability,} Monthly Weather Review 78.1
+  \url{  https://doi.org/10.1175/1520-0493(1950)078<0001:VOFEIT>2.0.CO;2}
+    
+    \bibitem{Property Road}
+    Property Road,
+    \emph{What Affects The Price Of A House?}, 
+    \url{https://www.propertyroad.co.uk/what-affects-the-price-of-a-house/}
+    
+    \bibitem{Gardner Homes}
+  G.J. Gardner Homes,
+  \emph{Choosing your Home: Single Storey vs Double Storey Houses},
+  \url{https://www.gjgardner.com.au/learn/choosing-your-home/single-storey-vs-double-storey-houses/#:~:text=When%20considering%20the%20cost%20of,single%20home%20of%20comparative%20size.}%20considering%20the%20cost%20of,single%20home%20of%20comparative%20size.}%20the%20cost%20of,single%20home%20of%20comparative%20size.}%20cost%20of,single%20home%20of%20comparative%20size.}%20of,single%20home%20of%20comparative%20size.}%20home%20of%20comparative%20size.}%20of%20comparative%20size.}%20comparative%20size.}%20size.}
+  
+  \end{thebibliography}
+```
