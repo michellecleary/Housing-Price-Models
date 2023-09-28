@@ -1,0 +1,1131 @@
+---
+title: 'Predictive Model Assessment for House Prices'
+author: "Michelle Cleary, Ellen Crombie, Fionnuala Marshall"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure stay in position
+- \usepackage{xcolor} #use the 'xcolor' package
+output:
+  pdf_document: default
+  bibliography: references.bib 
+  html_document: default
+  bookdown::pdf_document2: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,  warning = FALSE, message = FALSE)
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+```{r packs, message = FALSE, include = FALSE}
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(countrycode))
+suppressPackageStartupMessages(library(magrittr))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(kableExtra))
+suppressPackageStartupMessages(library(visdat))
+suppressPackageStartupMessages(library(coefplot))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(pander))
+suppressPackageStartupMessages(library(naivebayes))
+suppressPackageStartupMessages(library(MASS))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(ggcorrplot))
+suppressPackageStartupMessages(library(pROC))
+suppressPackageStartupMessages(library(ModelMetrics))
+suppressPackageStartupMessages(library(Amelia))
+suppressPackageStartupMessages(library(visreg))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(reticulate))
+suppressPackageStartupMessages(library(glmnet))
+suppressPackageStartupMessages(library(randomForest))
+suppressPackageStartupMessages(library(vip))
+```
+
+```{r reading-in-data}
+raw_prices <- read_csv("data/houseprices.csv", show_col_types = FALSE)
+
+prices <- na.omit(raw_prices)
+
+prices$Street <- factor(prices$Street, levels = c("Grvl", "Pave"), labels = c("Gravel", "Pavement"))
+
+prices$LotShape <- factor(prices$LotShape, levels = c("Reg", "IR1", "IR2", "IR3"),
+                          labels = c("Regular", "Slightly irregular", "Moderately irregular",
+                                     "Irregular"))
+
+prices$LandContour <- factor(prices$LandContour, levels = c("Lvl", "Bnk", "Low", "HLS"),
+                             labels = c("Level", "Banked", "Low", "Hillside"))
+
+
+prices$Utilities <- factor(prices$Utilities, levels = c("AllPub", "NoSeWa"),
+                           labels = c("All public", "No sewage"))
+
+prices$Neighborhood <- factor(prices$Neighborhood, levels = c("CollgCr", "Veenker", "Crawfor", "NoRidge", "Mitchel", "Somerst", "NWAmes",  "OldTown", "BrkSide",
+                                                           "Sawyer",  "NridgHt", "NAmes",   "SawyerW", "IDOTRR",  "MeadowV", "Edwards", "Timber",  "Gilbert",
+                                                           "StoneBr", "ClearCr", "NPkVill", "Blmngtn", "BrDale",  "SWISU",   "Blueste"),
+                              labels = c("CollgCr", "Veenker", "Crawfor", "NoRidge", "Mitchel", "Somerst", "NWAmes",  "OldTown", "BrkSide",
+                                         "Sawyer",  "NridgHt", "NAmes",   "SawyerW", "IDOTRR",  "MeadowV", "Edwards", "Timber",  "Gilbert",
+                                         "StoneBr", "ClearCr", "NPkVill", "Blmngtn", "BrDale",  "SWISU",   "Blueste"))
+
+prices$BldgType <- factor(prices$BldgType, levels = c("1Fam", "2fmCon", "Duplex", "TwnhsE", "Twnhs"),
+                           labels = c("1 family", "2 family conversion", "Duplex", "Townhouse end unit", "Townhouse inside unit"))
+
+prices$HouseStyle <- factor(prices$HouseStyle, levels = c("2Story", "1Story", "1.5Fin", "1.5Unf", "SFoyer", "SLvl", "2.5Unf", "2.5Fin"),
+                            labels = c("2 Story", "1 Story", "1.5 Story", "1.5 Story", "Split Foyer", "Split Level", "2.5 Story", "2.5 Story"))
+
+prices$RoofStyle <- factor(prices$RoofStyle, levels = c("Gable", "Hip", "Gambrel", "Mansard", "Flat", "Shed"),
+                           labels = c("Gable", "Hip", "Gambrel", "Mansard", "Flat", "Shed"))
+
+prices$Foundation <- factor(prices$Foundation, levels = c("PConc", "CBlock", "BrkTil", "Wood", "Slab", "Stone"),
+                            labels = c("Poured concrete", "Cinder block", "Brick and tile", "Wood", "Slab", "Stone"))
+
+prices$Heating <- factor(prices$Heating, levels = c("GasA", "GasW", "Grav", "Wall", "OthW", "Floor"),
+                         labels = c("Gas forced warm air furnace", "Gas hot water or steam heat", "Gravity furnace", "Wall furnace", "Hot water or steam heat other than gas", "Floor furnace"))
+
+prices$CentralAir <- factor(prices$CentralAir, levels = c("Y", "N"), labels = c(1, 0))
+
+prices$Electrical <- factor(prices$Electrical, levels = c("SBrkr", "FuseF", "FuseA", "FuseP", "Mix", NA),
+                            labels = c("Standard circuit breakers", "Fair fuse box", "Average fuse box",
+                                       "Poor fuse box", "Mixed"))
+
+
+# Summer, Spring, Autumn, Winter
+# prices$SeasonSold<- factor(prices$MoSold, labels = c("Winter", "Winter", "Spring", "Spring",
+#                                                      "Spring","Summer", "Summer", "Summer", "Autumn",                                                     "Autumn", "Autumn", "Winter"))
+
+# Adding bathrooms
+
+prices$GarageType <- factor(prices$GarageType,
+                            levels= c("Attchd",
+                                      "Detchd",
+                                      "BuiltIn",
+                                      "CarPort",
+                                      "2Types",
+                                      "NA",
+                                      "Basment"),
+                            labels  = c("Attached",
+                                        "Detached",
+                                        "Built In",
+                                        "Car Port",
+                                        "2Types",
+                                        "NA",
+                                        "Basement"))
+
+prices$KitchenQual <- factor(prices$KitchenQual,
+                            levels= c("Ex",
+                                      "Gd",
+                                      "TA",
+                                      "Fa"),
+                            labels  = c("Excellent",
+                                        "Good",
+                                        "Typical/ Average",
+                                        "Fair"))
+
+
+```
+
+
+
+\sffamily\fboxrule.1em\fboxsep1em \fcolorbox{cyan}{cyan!50}{\color{black}
+\begin{minipage}[c][][t]{15.5cm}
+\textbf{Executive Summary}
+
+Within this report we have created quantitative models which predict the sale price of
+a property based on information about the property. The models were formulated using data from the sale of houses in an American city over a 5 year period, which includes information about the features of each house, such as house style and lot area. Throughout this analysis we have dedicated a special focus to thorough validation techniques in order to ensure robustness and completeness of reported results.
+
+\begin{enumerate}
+\item The initial model uses all 29 house features from the dataset, and on average will predict sale price with an error of \$20024. To highlight just one result, this model determined that increasing the lot area and number of bedrooms is associated with a higher sale price. 
+\item One model improvement can be obtained by accounting for dependencies between features. For example, the number of kitchens adjusts the effect of ground living area.
+\item Further analysis indicates that using 3 features alone leads to satisfactory model performance, but using 29 produces the best model performance, with an error of \$19543. Within the dataset provided, on average the 3 features with the biggest impact on sale price are overall quality, total basement area and ground living area. 
+\end{enumerate}
+
+Within the second half of the report we developed 3 further models which evaluated several extra features, such as roof material and lot frontage. Under analysis using machine learning techniques, we discovered that the use of different modelling techniques and extra features, such as 1st and 2nd floor square footage, had significant benefit in reducing the error of our previous models. Overall, we have recommended a model which extracts the most relevant features and predicts house prices with an overall error of \$17909. 
+
+\end{minipage}}
+
+## Introduction
+
+We will first formulate a simple linear model to the data using all 29 available predictor features before assessing the impact on performance of different model variations. The initial dataset used to create our models includes 1460 observations based upon 31 features. The data focuses on the sale price of numerous houses in an American city over a 5 year period and included information about features of each house, such as lot area in square feet and neighbourhood. Within the second half of this report, a second dataset is introduced which includes additional features such as roof material and second floor square footage. We will evaluate the performance of each model under leave-one-out cross validation by measuring the mean absolute error of the prediction and the actual sale price.
+
+## Preprocessing of the Dataset
+
+```{r missings}
+# Only GarageType and Electrical have NA values
+electrical_na <- (sum(is.na(raw_prices$Electrical)) / nrow(raw_prices))*100
+garage_na <- (sum(is.na(raw_prices$GarageType)) / nrow(raw_prices))*100
+total_na <-((sum(is.na(raw_prices$GarageType))+sum(is.na(raw_prices$Electrical)))
+  /(nrow(raw_prices) * ncol(raw_prices)))*100
+```
+
+When carrying out initial exploration of the data, we looked for outliers and any features which had a significant level of missing values. Lot area appeared to contain some values outside of the usual range. However, these correlated with other features of the properties, and thus, we did not feel it was appropriate to remove them entirely from our dataset at this stage. Within the features describing garage type and electrical system, `r round(garage_na,2)`\% and `r round(electrical_na,2)`\% were missing respectively. We were able to remove any entries corresponding to these values since they only represented a small proportion of entries in the dataset (`r round(total_na,2)`\% in total) and so did not majorly reduce the number of observations.
+
+Next, we coded factor features and made simplifications based on similarity of level descriptions. The house style levels "1.5 story finished" and "1.5 story unfinished" were combined into "1.5 story", and similarly for "2.5 story". We decided that features such as neighbourhood, which had a high granularity, could not be simplified any further because the dataset did not contain any further information or context for us to do so.
+
+## Initial Linear Model 
+We created a linear regression model using all 29 predictor features from dataset of 1378 observations. We defined $\text{y}_i$ as the sale price for each house $i=1,...,n$, and defined the following model: 
+$$
+\text{y}_i = \alpha + \boldsymbol{x}^T_i\boldsymbol{\beta}+\epsilon _i
+$$
+where $\epsilon _i$ follows a normal distribution with mean zero and variance $\sigma ^2$. The vector $\boldsymbol{x}_i$ is a row of the model matrix for observation $i$ containing all the features, with dummy variables for factor features such as neighbourhood and street type. The vector $\boldsymbol{\beta}$ contains all the parameters relating to the columns in the model matrix $\mathbf{X}$. 
+
+Before analysing the results, we used Figure \ref{linassump} to check the linearity assumption between features and the sale price. The first plot displays an almost horizontal line without any distinct patterns, indicating the required linear relationship. The Normal Q-Q plot suggests the residuals are normally distributed to some extent, although there is variation within the tails. We noted that this might be improved by model refinement in the future. Furthermore, while the scale-location plot suggests that the variance of residual points is not perfectly constant, the average magnitude of standardized residuals isn't changing significantly as a function of fitted values. To improve this, we would suggest using a log or square root transformation of sale price in future analysis \cite{linreg}. Finally, by examining the leverage plot, we noted that within the data there are some extreme outliers, that may affect the predictive performance of the linear model. 
+
+```{r linassumption, fig.height=6, fig.width=10, fig.cap="\\label{linassump}Assessing the linearity assumptions in the initial model.", fig.pos="H"}
+
+# Fitting the linear model
+fit_all <- lm(SalePrice ~ ., data=prices)
+
+# Linearity assumptions
+par(mfrow = c(2, 2))
+plot(fit_all)
+lot_coeff <- fit_all[["coefficients"]][["LotArea"]]
+basement_coeff <- fit_all[["coefficients"]][["TotalBsmtSF"]]
+```
+
+To highlight a few key findings, an increase in lot area by one square foot is associated with a sale price increase of \$`r round(lot_coeff,2)` when all other features are held constant. Similarly, an increase in total basement area by one square foot is associated with an increase of \$`r round(basement_coeff,2)`.
+
+### Linear Model Assessment
+
+
+```{r simple-cv, cache = TRUE}
+set.seed(1234)
+
+numfolds <- nrow(prices)
+
+# stratified random split of the data.
+folds <- createFolds(prices$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+#con_overall <- data.frame()
+
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices[-folds[[i]],-31]
+  testdata <- prices[folds[[i]],-31]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices[folds[[i]],31]
+
+  # Note the training test labels
+  trainprices <- prices[-folds[[i]],31]
+
+  # Training set 
+  trainingset <- cbind(traindata, trainprices)
+
+  # Fit the model for SalePrice using training data
+  fit <- lm(SalePrice ~ ., data = trainingset)
+
+  # Predict SalePrice for the test data
+  preds <- predict(fit, newdata = testdata)
+
+  error[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+overall_error <- round(mean(error, na.rm = TRUE), 4) # 20023.6399
+```
+
+We assessed this model using leave-one-out cross validation (LOOCV), evaluating the mean absolute error as a performance metric. This validation approach belongs to the family of Monte Carlo methods, and is credited with producing an estimate of model performance with low bias across a multitude of statistical research \cite{overfit}. The method works by creating a model using all the observations in the training dataset except one. From this model, it then predicts the sale price of the observation in the test set and calculates the error of this prediction using the actual price within the dataset. This process is repeated for every observation in the dataset and the overall error for each model is calculated by finding the mean of all the errors. Following this approach, we expect that each time the model predicts a house sale price, the average error is \$`r format(round(overall_error,0), scientific=FALSE)`. 
+
+One final point to highlight is that features such as the year built and ground living area have high variance inflation factor scores, indicating a degree of collinearity. However, the focus of this analysis is on prediction, and so we will not remove these features at this stage \cite{colin}.
+
+```{r colin}
+colin <- c()
+
+for (n in names(prices)){
+    if (!is.factor(prices[[n]])){
+      colin <- append(colin, n)
+}}
+
+colin2 <- prices %>%
+  dplyr::select(colin)
+
+varinfluence <- car::vif(fit_all)
+```
+
+## Improving the Model
+### Feature Transformation and Interactions
+
+```{r interaction-code, cache = TRUE}
+LotArea_Log <- log(prices$LotArea)
+qu3 <- cbind(LotArea_Log,prices)
+
+numfolds <- nrow(qu3)
+sp <- ncol(qu3)
+
+# stratified random split of the data.
+folds <- createFolds(qu3$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+
+# LOOCV Interaction
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- qu3[-folds[[i]],-sp]
+  testdata <- qu3[folds[[i]],-sp]
+  
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+  
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+        stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+    # Note the training set labels
+    testprices <- qu3[folds[[i]],sp]
+    
+    # Note the training test labels
+    trainprices <- qu3[-folds[[i]],sp]
+    
+    # Fit the model for SalePrice using training data
+    fit <- lm(trainprices ~ Id + LotArea + Street + LotShape + LandContour + Utilities + 
+                Neighborhood + BldgType + HouseStyle + OverallQual + OverallCond + 
+                YearBuilt + RoofStyle + Foundation + TotalBsmtSF + Heating + 
+                CentralAir + Electrical + GrLivArea + FullBath + HalfBath + 
+                BedroomAbvGr + KitchenAbvGr + KitchenQual + TotRmsAbvGrd + 
+                Fireplaces + GarageType + GarageArea + MoSold + YrSold + 
+                KitchenAbvGr*GrLivArea + OverallCond*YearBuilt, data = traindata)
+    
+    # Predict SalePrice for the test data
+    preds <- predict(fit, newdata = testdata)
+    
+    error[i] <- abs(preds[[1]] - testprices[[1]])
+    
+  }
+}
+overall_error1 <- round(mean(error, na.rm = TRUE), 4) # 19877.618
+
+# Checking coefficients
+interact_fit <- lm(SalePrice ~ Id + LotArea + Street + LotShape + LandContour + Utilities + 
+                Neighborhood + BldgType + HouseStyle + OverallQual + OverallCond + 
+                YearBuilt + RoofStyle + Foundation + TotalBsmtSF + Heating + 
+                CentralAir + Electrical + GrLivArea + FullBath + HalfBath + 
+                BedroomAbvGr + KitchenAbvGr + KitchenQual + TotRmsAbvGrd + 
+                Fireplaces + GarageType + GarageArea + MoSold + YrSold + 
+                KitchenAbvGr*GrLivArea + OverallCond*YearBuilt, data = prices)
+
+#summary(interact_fit)
+    
+```
+The linear model can be improved by incorporating interactions between features. Figure 2 describes how recent years are associated with higher sales prices, when all other features are controlled. However, the figure also suggests that the majority of recent houses (from 1990 onwards) have overall condition ratings of 4 or 5. Considering this, we included an interaction term to assess whether year built has a different effect on sale price depending on the overall condition rating of the house. In a similar manner, we also included an interaction between the number of kitchens and the ground living area. Intuitively, it is important to investigate the dependence between these two features, since kitchens are most commonly on the ground floor. We also assessed interactions between features such as lot area and the number of bedrooms, however in this particular model, these effects only decreased the model performance. 
+
+Implementing both of these changes together decreased the model's performance error by \$`r round(overall_error - overall_error1, 0)`. To highlight a key finding, we see that when the number of kitchens increases, the positive effect of increasing ground living area is reduced. Alternatively, as the ground living area increases, there is a negative adjustment to the effect of increasing the number of kitchens. Consequently, the effect of increasing the number of kitchens is reduced since it has a positive coefficient.
+
+```{r interaction, fig.height=6, fig.width=10, fig.cap="\\label{interaction}Modelling sale price by year built, controlling for all other features, over-layed with a bar chart of counts in each year of overall house condition ratings.", fig.pos="H"}
+ylim.prim <- c(0, 70)   # in this example, precipitation
+ylim.sec <- c(35311, 755000) 
+
+b <- diff(ylim.prim)/diff(ylim.sec)
+a <- ylim.prim[1] - b*ylim.sec[1]
+
+ggplot(qu3) +
+  geom_bar(mapping = aes(x = YearBuilt, fill = factor(OverallCond)), stat = "count")+
+  geom_smooth(method = 'lm', se =F, aes(x = YearBuilt, y=SalePrice/10000), colour = 'red')+
+  scale_y_continuous("Count for Each Overall Condition", sec.axis = sec_axis(~ (. - a)/b, name = "SalePrice")) +
+  #scale_x_continuous("Month", breaks = 1:12) +
+  guides(fill=guide_legend(title="Overall Condition"))+
+  theme(axis.line.y.right = element_line(color = "red"), 
+        axis.ticks.y.right = element_line(color = "red"),
+        axis.text.y.right = element_text(color = "red"), 
+        axis.title.y.right = element_text(color = "red"))
+```
+
+```{r plus-lot-area-log, cache = TRUE}
+numfolds <- nrow(qu3)
+sp <- ncol(qu3)
+
+# stratified random split of the data.
+folds <- createFolds(qu3$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+
+# LOOCV Interaction
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- qu3[-folds[[i]],-sp]
+  testdata <- qu3[folds[[i]],-sp]
+  
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+  
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+        stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+    # Note the training set labels
+    testprices <- qu3[folds[[i]],sp]
+    
+    # Note the training test labels
+    trainprices <- qu3[-folds[[i]],sp]
+    
+    # Fit the model for SalePrice using training data
+    fit <- lm(trainprices ~ Id + LotArea_Log + Street + LotShape + LandContour + Utilities + 
+                Neighborhood + BldgType + HouseStyle + OverallQual + OverallCond + 
+                YearBuilt + RoofStyle + Foundation + TotalBsmtSF + Heating + 
+                CentralAir + Electrical + GrLivArea + FullBath + HalfBath + 
+                BedroomAbvGr + KitchenAbvGr + KitchenQual + TotRmsAbvGrd + 
+                Fireplaces + GarageType + GarageArea + MoSold + YrSold + 
+                OverallCond*YearBuilt + KitchenAbvGr*GrLivArea, data = traindata)
+    
+    # Predict SalePrice for the test data
+    preds <- predict(fit, newdata = testdata)
+    
+    error[i] <- abs(preds[[1]] - testprices[[1]])
+    
+  }
+}
+overall_error2 <- round(mean(error, na.rm = TRUE), 4) # 19808.2031
+
+```
+
+In addition to this, Figure \ref{lotarea1} suggests that lot area is not linearly associated with sale price, when controlling for other features. Modelling lot area under a log transformation alone did not yield any substantial improvements in the graph, yet implementing both the interactions and this transformation led to an overall decrease in performance error of \$`r round(overall_error - overall_error2, 0)`, compared to the initial model. 
+
+```{r outliers, cache = TRUE}
+# Removing outliers
+out <- boxplot.stats(qu3b$LotArea)$out
+out_ind <- which(qu3b$LotArea %in% c(out))
+test <- qu3b[-out_ind, ]
+
+# LOOCV Interaction + Transformation
+test <- na.omit(test)
+
+numfolds <- nrow(test)
+sp <- ncol(test)
+
+# stratified random split of the data.
+folds <- createFolds(test$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- test[-folds[[i]],-sp]
+  testdata <- test[folds[[i]],-sp]
+  
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+  
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+        stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+    # Note the training set labels
+    testprices <- test[folds[[i]],sp]
+    
+    # Note the training test labels
+    trainprices <- test[-folds[[i]],sp]
+    
+    # Fit the model for SalePrice using training data
+    fit <- lm(trainprices ~ Id + LotArea + Street + LotShape + LandContour + Utilities + 
+                Neighborhood + BldgType + HouseStyle + OverallQual + OverallCond + 
+                YearBuilt + RoofStyle + Foundation + TotalBsmtSF + Heating + 
+                CentralAir + Electrical + GrLivArea + FullBath + HalfBath + 
+                BedroomAbvGr + KitchenAbvGr + KitchenQual + TotRmsAbvGrd + 
+                Fireplaces + GarageType + GarageArea + MoSold + YrSold + 
+                OverallCond*YearBuilt + KitchenAbvGr*GrLivArea, data = traindata)
+    
+    # Predict SalePrice for the test data
+    preds <- predict(fit, newdata = testdata)
+    
+    error[i] <- abs(preds[[1]] - testprices[[1]])
+    
+  }
+}
+overall_error3 <- round(mean(error, na.rm = TRUE), 4) # 17345.1673
+```
+
+Applying the log transformation reduced the skewness of the data and led to a slightly improved model fit. However when considering lot area, the most significant benefit to model performance can instead be gained by removing the aforementioned extreme outliers. Incorporating both the interaction terms and the removal of 79 extreme values of lot area contributes to a \$`r round(overall_error - overall_error3, 0)` decrease in model performance error, compared to the initial model. Despite this, simply removing these values is not feasible because based on the information received regarding the dataset, these data points appear to represent houses within the population. Should further information suggest that these outliers are either data errors or cases with unusual conditions, this analysis indicates that removing them will significantly improve model performance. Overall, we conclude that both log transforming the lot area and incorporating interaction terms for overall condition and year built, and the number of kitchens and the ground living area, leads to a model performance of \$`r round(overall_error - overall_error2, 0)`.
+
+```{r lot-area1, fig.height=6, fig.width=10, fig.cap="\\label{lotarea1}Modelling sale price by lot area, and by lot area with a log transform.", fig.pos="H"}
+qu3b <- qu3
+
+plot1 <- qu3b %>%
+  ggplot(aes(LotArea, SalePrice)) + 
+  geom_point() +
+  geom_smooth(method='lm', colour = "darkcyan") + 
+  xlab("Lot Area")
+
+plot2<- qu3b %>%
+  ggplot(aes(LotArea_Log, SalePrice)) + 
+  geom_point() +
+  geom_smooth(method='lm', colour = 'steelblue')+
+  xlab("Logged Lot Area")
+
+plot_grid(plot1,plot2,
+          ncol =1, nrow =2)
+```
+
+### Variable Selection
+
+In many contexts, it will be important to understand which features have the biggest impact on the sale price. For example, if a homeowner is looking to make renovations before selling their house, they might want to consider whether increasing the number of bedrooms or improving the overall quality of the house might have more of an impact on the sale price. We used the full linear model created above which includes all features within the data set, and then used subset selection in order to limit the model to a certain number of predictor features.
+
+```{r model-3, results="hide"}
+# Stepwise variable selection on full model
+step_model <- leaps::regsubsets(SalePrice ~ ., data=prices, method = "forward", nbest=1, nvmax=2) 
+```
+
+```{r formula}
+# Following code from http://www.sthda.com/english/articles/37-model-selection-essentials-in-r/155-best-subsets-regression-essentials-in-r/#:~:text=The%20R%20function%20regsubsets(),to%20incorporate%20in%20the%20model.
+# id: model id
+# object: regsubsets object
+# data: data used to fit regsubsets
+# outcome: outcome variable
+get_model_formula <- function(id, object, outcome){
+  # get models data
+  models <- summary(object)$which[id,-1]
+  # Get outcome variable
+  #form <- as.formula(object$call[[2]])
+  #outcome <- all.vars(form)[1]
+  # Get model predictors
+  predictors <- names(which(models == TRUE))
+  predictors <- paste(predictors, collapse = "+")
+  # Build model formula
+  as.formula(paste0(outcome, "~", predictors))
+}
+```
+
+```{r cv-lm, cache = TRUE, results = "hide"}
+# CV USING LM
+set.seed(1234)
+
+numfolds <- nrow(prices)
+
+# stratified random split of the data.
+folds <- createFolds(prices$SalePrice, k=numfolds)
+error2 <- numeric(numfolds)
+#con_overall <- data.frame()
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices[-folds[[i]],-31]
+  testdata <- prices[folds[[i]],-31]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error2[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices[folds[[i]],31]
+
+  # Note the training test labels
+  trainprices <- prices[-folds[[i]],31]
+
+  # Training set 
+  trainingset <- cbind(traindata, trainprices)
+
+  # Fit the model for SalePrice using training data
+  best_subset <- leaps::regsubsets(SalePrice ~ ., trainingset, method = "forward", nvmax = 3)
+  formula <- get_model_formula(3, best_subset, "SalePrice")
+  
+  fit <- lm(formula, data = trainingset)
+
+  # Predict SalePrice for the test data
+  preds <- predict(fit, newdata = testdata)
+
+  error2[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+overall_error_test <- round(mean(error2, na.rm = TRUE), 4) # 26098.5959
+```
+
+```{r cv-predict, cache = TRUE, message = FALSE, warning = FALSE, results = "hide"}
+# CV USING PREDICT.REGSUBSETS 
+# Following code from http://www.science.smith.edu/~jcrouser/SDS293/labs/lab9-r.html
+predict.regsubsets <- function(object, newdata, id ,...) {
+  form <- as.formula(object$call[[2]]) 
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  mat[, xvars] %*% coefi
+}
+set.seed(1234)
+
+numfolds <- nrow(prices)
+
+# stratified random split of the data.
+folds <- createFolds(prices$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices[-folds[[i]],-31]
+  testdata <- prices[folds[[i]],-31]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices[folds[[i]],31]
+
+  # Note the training test labels
+  trainprices <- prices[-folds[[i]],31]
+
+  # Training set 
+  trainingset <- cbind(traindata, trainprices)
+
+  # Fit the model for SalePrice using training data
+  best_subset <- leaps::regsubsets(SalePrice ~ ., trainingset, method = "forward", nvmax = 3)
+
+  preds <- predict.regsubsets(best_subset, prices[folds[[i]], ], id = 3)
+
+  error[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+overall_error_3vars <- round(mean(error, na.rm = TRUE), 4) # 26098.5959
+
+prct_error_3step <- (overall_error_3vars - overall_error) / overall_error
+prct_error_3step <- prct_error_3step * 100
+```
+
+```{r cv-many-vars, cache = TRUE}
+# LOOCV USING PREVIOUS CODE THAT WORKED FOR 3 VARIABLES
+set.seed(1234)
+
+numfolds <- nrow(prices)
+
+# stratified random split of the data.
+folds <- createFolds(prices$SalePrice, k=numfolds)
+cv_errors <- matrix(NA, numfolds, 50, dimnames = list(NULL, paste(1:50)))
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices[-folds[[i]],-31]
+  testdata <- prices[folds[[i]],-31]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    cv_errors[i, j] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices[folds[[i]],31]
+
+  # Note the training test labels
+  trainprices <- prices[-folds[[i]],31]
+
+  # Training set 
+  trainingset <- cbind(traindata, trainprices)
+  testset <- cbind(testdata, testprices)
+
+  # Fit the model for SalePrice using training data
+  best_subset <- leaps::regsubsets(SalePrice ~ ., trainingset, method = "forward", nvmax = 50)
+
+  # perform cross-validation
+  for(j in 1:50) {
+    pred <- predict.regsubsets(best_subset, prices[folds[[i]], ], id = j)
+    cv_errors[i, j] <- abs(testprices[[1]] - pred[[1]])
+    }
+  }
+}
+```
+
+Initially, we investigated a model which used only the 3 features with the biggest impact on sale price. To obtain this model, we implemented forwards stepwise selection, which works by gradually increasing the complexity of the model. This approach evaluates separate best models of all sizes for $k = 1 \ldots, K$ features, where in this analysis, $K$ was set to 3. For each value of $k$, the best model is chosen to be the one with the largest $R^2$ value. Finally, this approach was assessed by calculating the mean absolute error under leave-one-out cross validation. Across all but one set of the training data, the three variables which had the largest effect on performance were the overall quality, total basement square footage and ground floor living area. However, using forward stepwise selection on one set of the training data determined that overall quality, garage area and ground floor living area had the largest effect on performance. Assessing this approach overall led to a performance error of \$`r format(round(overall_error_3vars,0), scientific=FALSE)`. This error is `r round(prct_error_3step,1)`\% higher than when using all of the variables.
+
+```{r min-error}
+mean_cv_errors <- colMeans(cv_errors, na.rm = TRUE)
+minimum_error <- which.min(mean_cv_errors)
+min_error_29 <- round(mean_cv_errors[minimum_error][1], 2)
+```
+
+Figure \ref{cv_errors} shows how the mean absolute error changes as more variables are added to the model. It is important to note here that this approach considers each level within a factored feature as a feature on its own, hence we have described the effect on "variables" instead of features. It is evident that when starting with the most basic model, simply adding one variable had a large impact on performance. This rate of improved performance decreased as more variables were added to the model, with visibly lower rates of improved performance after the 3 variable threshold. Therefore, if aiming to predict house prices using a simple model with only a few variables, we suggest that using forward stepwise selection for 3 variables is an effective method to do so.
+
+As the model became more and more complex, the error typically decreased, except for some slight deviations. The model which used 29 variables appears to have the optimal performance, with a mean absolute error of \$`r format(round(min_error_29,0), scientific=FALSE)`. This suggests that implementing forward stepwise selection with $K > 29$ is not necessary as it simply increases complexity of the model without improving performance, most likely due to overfitting.
+
+```{r cv-errors-vars, fig.height=5, fig.width = 8, fig.cap="\\label{cv_errors}Mean absolute error for best forward stepwise selection models with the minimum error highlighted in red."}
+mean_cv_errors <- colMeans(cv_errors, na.rm = TRUE)
+minimum_error <- which.min(mean_cv_errors)
+plot(mean_cv_errors, type = "b", xlab = "Number of variables", 
+     ylab = "Mean absolute error")
+points(minimum_error, mean_cv_errors[minimum_error][1], col = "red",
+       cex = 2, pch = 20)
+```
+
+
+## Investigation of Extra Features
+
+The next step in this analysis was evaluating a new dataset containing information on 81 features of 1460 observations. This dataset has several extra property features compared to the one previously used, including garage finish, quality, and condition; exterior quality and condition; and roof material. We fit three models to this data - a simple linear regression, a lasso, and a random forest. We again assessed each model using leave-one-out cross validation, evaluating the mean absolute error as a performance metric. We also investigated whether the extra features in this dataset have much benefit in predicting sale price compared to using only those in the original dataset.
+
+### Preprocessing
+```{r load-new-data}
+newrawprices <- read_csv("data/houseprices2.csv", show_col_types = FALSE) 
+```
+
+```{r factor-new-data}
+newprices <- newrawprices
+# Convert character columns to factor columns
+newprices[sapply(newprices, is.character)] <- lapply(newprices[sapply(newprices, is.character)], 
+                                       as.factor)
+
+```
+
+When carrying out initial exploration of the data, we looked for any features which had a significant level of missing values. We found that five features - alley type, fireplace quality, pool condition, fence type, and miscellaneous features - had over 600 missing values, as seen in Figure \ref{missing}, and so we removed these features from the dataset. We then removed any observations with missing values from the data, leaving 1094 remaining. 
+
+```{r initial-exploration, fig.height=3, fig.width=7, fig.cap="\\label{missing}Missingness map showing missing values for features alley type, fireplace quality, pool condition, fence type, and miscellaneous feature.", fig.pos="H"}
+# Missingness map for features we remove due to high number of NAs
+missings <- data.frame(cbind(newprices$Alley, newprices$FireplaceQu, newprices$PoolQC,
+                             newprices$Fence, newprices$MiscFeature))
+colnames(missings) <- c("Alley Type", "Fireplace Qual", "Pool Cond", 
+                        "Fence Type", "Misc Features")
+missmap(missings, col = c("red", "#009194"), x.las = 2)
+```
+
+```{r preprocessing-new-data}
+# Number of NAs in each column
+nas <- colSums(is.na(newprices))
+# Indices of columns with over 600 missing values
+many_nas_indices <- as.numeric(which(nas > 600))
+# Remove these columns
+newprices <- newprices[, -c(many_nas_indices)]
+# Remove observations with missing values and drop unused factor levels
+newprices <- na.omit(newprices)
+newprices <- droplevels(newprices)
+# Drop any factor variables with only one level remaining
+for (n in names(newprices)){
+    if (is.factor(newprices[[n]])){
+      if (length(levels(newprices[[n]])) == 1){
+        index <- which(colnames(newprices)==n)
+          newprices <- subset(newprices, select = -index)
+      }
+    }
+}
+# Copy data
+newprices_encoded <- newprices
+# Encode factors as numeric
+newprices_encoded[sapply(newprices, is.factor)] <- lapply(newprices[sapply(newprices, is.factor)], as.numeric)
+# Compute correlation matrix
+correlation <- data.frame(cor(newprices_encoded))
+# Find variables with high levels of correlation
+high_cor <- data.frame(which(correlation > 0.9 | correlation < -0.9, arr.ind = TRUE))
+# Each variable has correlation of 1 with itself so find indices that are different
+# but highly correlated
+different_indices <- which(high_cor$row != high_cor$col)
+# Create dataframe of these correlated indices
+high_cor_diff <- high_cor[different_indices ,]
+# 1stFlrSF, TotalBsmtSF correlated
+# Drop ID and TotalBsmtSF
+newprices <- subset(newprices, select = -c(1,37))
+```
+
+We then noted three possible issues that may cause problems when fitting our models. Firstly, the features 1st floor square footage and total basement square footage had a correlation of 0.91. Secondly, the values for total basement square footage were a linear combination of those for basement finished and unfinished square footage. Finally, ground living area was a linear combination of the values for total basement square footage and second floor square footage. As total basement square footage is a common factor in all three of these issues, we excluded this feature. 
+
+## Simple Linear Regression Model
+
+We created a linear regression model using all 72 predictor features from the dataset of 1094 observations. We defined $\text{y}_i$ as the sale price for each house $i=1,...,n$, and defined the following model: 
+$$
+\text{y}_i = \omega + \boldsymbol{x}^T_i\boldsymbol{\gamma}+\delta _i
+$$
+where $\delta _i$ follows a normal distribution with mean zero and variance $\sigma ^2$. The vector $\boldsymbol{x}_i$ is a row of the model matrix for observation $i$ containing containing all the features, with dummy variables for factor features such as neighbourhood and street type. The vector $\boldsymbol{\gamma}$ contains all the parameters relating to the columns in the model matrix $\mathbf{X}$. 
+
+Before analysing the results, we used Figure \ref{simpleassump} to assess the linear regression assumptions for the data. The first plot displays an almost horizontal line without any distinct patterns, but with some significant outliers. The Normal Q-Q plot suggests the residuals are normally distributed to an extent. However, there is deviation from the fitted line in the tails. The upwards trend in the scale-location plot suggests that the assumption of constant variance may not be valid. Finally, by examining the leverage plot, we noted that there are some extreme outliers within the data that may affect the predictive performance of the linear model. As a result, we would expect that a linear regression model may not perform particularly well for this data.
+
+```{r simple-model-new, cache = TRUE, fig.height=6, fig.width=10, fig.cap="\\label{simpleassump}Assessing the linear regression assumptions for the data.", fig.pos="H"}
+# Fit the model
+simple_model_original <- lm(SalePrice ~ ., data = newprices, na.action = NULL)
+# Dropping levels
+rowstodrop <- which(newprices$Electrical == "Mix" | newprices$Exterior2nd == "CBlock")
+newprices <- newprices[-c(rowstodrop),]
+# Drop GrLivArea
+newprices <- newprices[,-43]
+
+# Fit the model again
+simple_model <- lm(SalePrice ~ ., data = newprices, na.action = NULL)
+# Check linear regression assumptions
+par(mfrow = c(2, 2))
+plot(simple_model)
+```
+
+Upon fitting the model using all 72 available features, we found that the coefficient values for ground living area, the mix level of the electrical feature, and the cinderblock level of the 2nd exterior feature were not defined. This indicates that the remaining variables explain all of the variation in the data and these features do not add any information to the model, so we dropped ground living area. For the latter two factor level features, as each of these levels appear only once in the data, we removed these two observations. We fit the model again, using the remaining 71 predictor variables for 1092 observations. 
+
+```{r, simple-cv-new, cache = TRUE}
+set.seed(1234)
+
+numfolds <- nrow(newprices)
+
+# stratified random split of the data.
+folds <- createFolds(newprices$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+#con_overall <- data.frame()
+
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- newprices[-folds[[i]],-72]
+  testdata <- newprices[folds[[i]],-72]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- newprices[folds[[i]],72]
+
+  # Note the training test labels
+  trainprices <- newprices[-folds[[i]],72]
+
+  # Training set 
+  trainingset <- newprices[-folds[[i]],]
+
+  # Fit the model for SalePrice using training data
+  fit <- lm(SalePrice ~ ., data = trainingset)
+
+  # Predict SalePrice for the test data
+  preds <- predict(fit, newdata = testdata)
+
+  error[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+simple_overall_error <- round(mean(error, na.rm = TRUE), 2) # 18849.66
+```
+
+We assessed this simple linear regression model using leave-one-out cross validation and found it to have a mean absolute error of \$`r format(round(simple_overall_error,0), scientific=FALSE)`. This is comparatively better performance than that of the simple linear model for the original dataset, which had a mean absolute error of \$`r format(round(overall_error,0), scientific=FALSE)`. 
+
+## Lasso Model
+
+Next, we applied the lasso regularisation technique to attempt to improve upon the performance of the simple linear model. In order to fit a lasso model, we first encoded all of the factor features in the data using dummy variables. With each individual factor level now being considered as its own variable, this encoded dataset has 252 predictor variables.
+
+```{r dummy-encoding}
+# Dummy encode factor variables
+dummyvariables <- dummyVars(~ ., data = newprices)
+prices_encoded <- data.frame(predict(dummyvariables, newdata = newprices))
+rows_one_value <- which(lengths(sapply(prices_encoded,unique))<=1)
+prices_encoded <- prices_encoded[, -c(rows_one_value)]
+```
+
+```{r lasso-model, cache=TRUE}
+set.seed(1234)
+lambdas <- seq(1550, 1600, by = 1)
+n <- nrow(prices_encoded)
+# Create model matrix
+X <- as.matrix(prices_encoded[,-253])
+# Create response variable
+y <- prices_encoded$SalePrice
+# Setting alpha = 1 implements lasso regression
+# Use LOOCV to find best value for lambda
+lasso_reg <- cv.glmnet(X, y, alpha = 1, lambda = lambdas, nfolds = n)
+lambda_best <- lasso_reg$lambda.min
+# Fit lasso model using best value of lambda
+lasso_model <- glmnet(X, y, alpha = 1, lambda = lambda_best)
+```
+
+```{r lasso-coefs}
+# Extract coefficients
+coefs <- varImp(lasso_model, lambda = lambda_best)
+# Extract coefficients not forced to zero
+coefs_imp <- filter(coefs, Overall != 0)
+```
+
+In a lasso regression model with $n$ observations and $K$ variables, we choose $\theta$ to minimise the loss function:
+$$
+C(\theta) = \sum_{i=1}^n (y_i-\theta ^Tx_i)^2+\lambda\sum_{k=1}^K|\theta_k|.
+$$
+The lasso technique performs variable selection, with the absolute value penalty forcing some coefficients to zero. Using trial and error, we found the optimal value of $\lambda$ to be `r lambda_best`, and used this to fit a lasso model.
+
+The lasso model uses 60 variables as predictors, forcing the coefficients of the other 192 variables to zero. These 60 variables correspond to 45 of the 71 features used - 19 continuous features and particular levels of 26 factor features. Notably, of these 45 selected features, only 16 were present in the original, smaller dataset, such as lot area, year built and overall quality. The remaining 29 consist of the extra features available in the new dataset, including roof material, sale type, and garage finish and quality. This suggests that the extra variables have some benefit when modelling the data, compared to using only those from the original dataset. 
+
+```{r lasso-cv, cache=TRUE}
+set.seed(1234)
+
+numfolds <- nrow(prices_encoded)
+
+# stratified random split of the data.
+folds <- createFolds(prices_encoded$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+#con_overall <- data.frame()
+
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices_encoded[-folds[[i]],-253]
+  testdata <- prices_encoded[folds[[i]],-253]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices_encoded[folds[[i]],253]
+
+  # Note the training test labels
+  trainprices <- prices_encoded[-folds[[i]],253]
+
+  # Training set 
+  trainingset <- prices_encoded[-folds[[i]],]
+  X_train <- as.matrix(traindata)
+  
+  # Test set
+  X_test <- as.matrix(testdata)
+  
+  # Fit the model for SalePrice using training data
+  lasso_model <- glmnet(X_train, trainprices, alpha = 1, lambda = lambda_best)
+
+  # Predict SalePrice for the test data
+  preds <- predict(lasso_model, s = lambda_best, newx = X_test)
+
+  error[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+lasso_overall_error <- round(mean(error, na.rm = TRUE), 2) # 17908.88
+```
+
+```{r percentage-error-lasso}
+# Compute percentage decrease in error from simple model
+percentage_error_lasso <- (100*(simple_overall_error - lasso_overall_error)) /
+  simple_overall_error
+```
+
+We assessed the lasso model using leave-one-out cross-validation and find it to have a mean absolute error of \$`r format(round(lasso_overall_error,0), scientific=FALSE)`. The lasso model performs better than the simple linear model, which had a mean absolute error of \$`r format(round(simple_overall_error,0), scientific=FALSE)`, which is equivalent to a `r round(percentage_error_lasso, 1)`\% decrease. This suggests that the simple linear model may have been overfitting the data, and that some of the features were irrelevant. 
+
+## Random forest
+
+Finally, we fit a random forest model to the data by training 40 decision trees under a bootstrapping approach. As the dataset contained $K=252$ variables, we chose $P = \frac{K}{3} = 84$ variables at random. We then sampled $M=1092$ observations with replacement from the total $1092$ observations. Each decision tree was grown on a bootstrap sample, using only these $1092$ sampled observations for the randomly chosen $84$ variables. This process was repeated until 40 decision trees were formed. The final prediction for a new observation is the average prediction of all trees.
+
+```{r random-forest}
+# Fit random forest model
+K <- ncol(prices_encoded)
+P <- round(K/3)
+M <- nrow(prices_encoded)
+set.seed(1234)
+random_forest_model <- randomForest(SalePrice ~ ., data=prices_encoded, ntree=40,
+                                    mtry=P, sampsize=M, type="regression",
+                                    keep.forest=TRUE, importance=TRUE)
+```
+
+Figure \ref{rfvarimp} illustrates the importance of the 15 most important variables as measured by the random forest model based on mean absolute error. Of these 15 variables, only 5 were present in the original dataset, indicating that the extra variables improve model performance, compared to using only those from the original dataset. In addition, 2 of the top 3 most important variables were not present in the original, smaller dataset, providing further evidence for this claim. We note that the 12 most important variables in the random forest model were also used in the lasso model, also suggesting that they explain variation within the data.
+
+```{r var-imp-plot, fig.height=5, fig.width=10, fig.cap="\\label{rfvarimp}Variable importance of 15 most important variables based on mean absolute error as measured by the random forest model."}
+# Compute variable importance scores for predictors based on MAE
+var_imp <- vi(random_forest_model, metric = "mae")
+# Plot top 15 most important variables
+vip(var_imp, num_features = 15, geom = "point")
+```
+
+
+```{r rf-cv, cache=TRUE, results='hide'}
+set.seed(1234)
+
+numfolds <- nrow(prices_encoded)
+
+# stratified random split of the data.
+folds <- createFolds(prices_encoded$SalePrice, k=numfolds)
+error <- numeric(numfolds)
+
+
+for (i in 1:numfolds) {
+  stop = 0
+  # Define the training and test data, both do not have SalePrice
+  traindata <- prices_encoded[-folds[[i]],-253]
+  testdata <- prices_encoded[folds[[i]],-253]
+
+  traindata <- droplevels(traindata)
+  testdata <- droplevels(testdata)
+
+  # Loop to avoid factor levels being in test set but not training set
+  for (n in names(testdata)){
+    if (is.factor(testdata[[n]])){
+      if (!(levels(testdata[[n]]) %in% levels(traindata[[n]]))){
+          stop = 1
+      }
+    }
+  }
+  
+  if (stop == 1){
+    error[i] <- NA
+    next
+  } else{
+  # Note the training set labels
+  testprices <- prices_encoded[folds[[i]],253]
+
+  # Note the training test labels
+  trainprices <- prices_encoded[-folds[[i]],253]
+
+  # Training set 
+  trainingset <- prices_encoded[-folds[[i]],]
+  
+  K <- ncol(traindata)
+  P <- round(K/3)
+  M <- nrow(traindata)
+  
+  # Fit the model for SalePrice using training data
+  random_forest <- randomForest(SalePrice ~ ., data=trainingset, ntree=40, mtry=P,
+                                sampsize=M, type = "regression", keep.forest=TRUE, 
+                                importance=TRUE)
+
+  # Predict SalePrice for the test data
+  preds <- predict(object = random_forest, newdata = testdata, type = "response")
+
+  error[i] <- abs(preds[[1]] - testprices[[1]])
+  
+  }
+}
+  
+randomforest_overall_error <- round(mean(error, na.rm = TRUE), 2) # 18421.91 (50-fold CV)
+```
+
+```{r percentage-error-rf}
+# Compute percentage decrease in error from simple model
+percentage_error_rf <- (100*(simple_overall_error - randomforest_overall_error)) /
+  simple_overall_error
+```
+
+We assessed the random forest model using 50-fold cross-validation and found it to have a mean absolute error of \$`r format(round(randomforest_overall_error,0), scientific=FALSE)`, which is equivalent to a `r round(percentage_error_rf, 0)`\% decrease. It performs better than the simple linear model, but not as well as the lasso model.
+
+## Conclusion
+
+In this report, we investigated the performance of various models in predicting sale price of a house, given particular features. Throughout the process, we used leave-one-out cross validation in order to estimate the mean absolute error of each model, as summarised in Table \ref{tab:summarytab}. 
+
+```{r summarytab, echo = FALSE}
+summary_df <- data.frame(c("Simple", "Interactions and Transformation",  "3 Features", "29 Variables", 
+                            "Simple with Extra Features", "Lasso", "Random Forest"), 
+                         round(c(overall_error,overall_error2,overall_error_3vars, min_error_29, simple_overall_error,lasso_overall_error,randomforest_overall_error), 0))
+colnames(summary_df) <- c("Model", "Mean Absolute Error under LOOCV ($)")
+
+knitr::kable(summary_df, 
+             caption="Summary of mean absolute prediction errors for each model.") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+Based on these results, when there is limited number of house features available, such as those provided in the original, smaller dataset, the implementation of a three variable model under forward stepwise selection is not recommended. However, this selection method has the potential to perform well when the number of variables selected is increased. In fact, this approach produced the best model for the original, smaller dataset, when choosing 29 variables. Moreover, if a model is required with a specific complexity, we would advise using this approach. The results also show that implementing a linear regression model with interactions and transformations performs very similarly, with only a \$`r format(round(overall_error2 - min_error_29,0), scientific=FALSE)` increase in error compared to the former approach. Considering that stepwise selection can be time-consuming and computationally expensive, we propose this method as an alternative if a simpler method is desired.
+
+When extra house features are available, such as those included in the second dataset, we have created 3 quantitative models which more accurately predict the sale price of a house, compared to any of the models which use only the features in the smaller dataset. This indicates that there is benefit in including these extra features when formulating predictive models. Considering the results in Table \ref{tab:summarytab}, we conclude that, out of all the models developed, the lasso regression model most accurately predicts the sale price of a house. As a note of comparison, the mean absolute error is \$`r format(round(min_error_29- lasso_overall_error,0), scientific=FALSE)` less than that of the 29 variable stepwise selection model. 
+
+Overall, the evaluation of the mean absolute error under leave-one-out cross validation has reduced bias in our results, and we are confident in our recommendation that the lasso model provides the best prediction of house sale prices.
+
+```{=tex}
+\begin{thebibliography}{99}
+
+  \bibitem{linreg}
+  STHDA,
+  \emph{Linear regression assumptions and diagnostics in R: Essentials}
+  \url{http://www.sthda.com/english/articles/39-regression-model-diagnostics/161-linear-regression-assumptions-and-diagnostics-in-r-essentials/}
+   year={2018}, month={Mar} 
+   
+   \bibitem{overfit}
+   Hawkins, Douglas M. (2004)
+\emph{The Problem of Overfitting}. In Journal of Chemical Information and Computer Sciences, 44,1, pp1-12
+\url{ https://doi.org/10.1021/ci0342472}
+
+\bibitem{colin}
+Dormann, C. F. and Elith, J. and Bacher, S. and Buchmann, C. and Carl, G. and Carré, G. and Marquéz, J. R. and Gruber, B. and Lafourcade, B. and Leitão, P. J. and Münkemüller, T. and McClean, C. and Osborne, P. E. and Reineking, B. and Schröder, B. and Skidmore, A. K. and Zurell, D. and Lautenbach, S. (2012)
+\emph{Collinearity: A review of methods to deal with it and a simulation study evaluating their performance}. Ecography, 36(1), 27–46. \url{https://doi.org/10.1111/j.1600-0587.2012.07348.x}
+
+  \end{thebibliography}
+```
