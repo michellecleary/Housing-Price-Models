@@ -3,8 +3,8 @@
 Statistical case study carried out as a group project at the University of Edinburgh.
 
 Datasets: 
-*Dataset 1: housing data for an American city, including 29 house features.
-*Dataset 2: housing data for an American city, including the same features as Dataset 1, along with an additional 52 features.
+-Dataset 1: housing data for an American city, including 29 house features.
+-Dataset 2: housing data for an American city, including the same features as Dataset 1, along with an additional 52 features.
 
 Report 1: This report evaluates the performance of two classification models at predicting whether a house will sell for above or below the average market price. Firstly, a logistic regression model is implemented, using all 29 available features in Dataset 1. Then, a Naive Bayes model using only five features from Dataset 1 was fitted. Model performance was evaluated using accuracy under 10-fold cross-validation.
 
